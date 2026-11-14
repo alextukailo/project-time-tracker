@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "Трекер времени",
+  "version": "1.0.0",
+  "description": "Учёт времени по проектам с Google Таблицами",
+  "permissions": [
+    "storage",
+    "alarms"
+  ],
+  "host_permissions": [
+    "https://script.google.com/*",
+    "https://script.googleusercontent.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "icons": {
+    "16": "icons/idle-16.png",
+    "32": "icons/idle-32.png",
+    "48": "icons/idle-48.png",
+    "128": "icons/idle-128.png"
+  },
+  "action": {
+    "default_popup": "index.html",
+    "default_title": "Трекер времени",
+    "default_icon": {
+      "16": "icons/idle-16.png",
+      "32": "icons/idle-32.png"
+    }
+  }
+}

@@ -1,0 +1,28 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand: #f1bc00;
+}
+
+body {
+  width: 380px;
+  min-height: 250px;
+  margin: 0;
+  background: #ffffff;
+  color: #000000;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Button cursors: interactive, unavailable, and processing. */
+button:not(:disabled) {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: default;
+}
+
+/* progress indicates work continues without blocking the entire popup. */
+button[aria-busy="true"] {
+  cursor: progress;
+}
