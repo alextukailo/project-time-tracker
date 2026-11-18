@@ -357,7 +357,14 @@ export async function syncTimeEntries() {
   };
 }
 
+let desktopSyncQueue = Promise.resolve();
 export function requestSync() {
+  if (typeof window !== 'undefined' && window.desktop?.platform === 'electron') {
+    // Serialize concurrent UI requests so remote snapshots cannot race each other.
+    const job = desktopSyncQueue.then(() => syncTimeEntries());
+    desktopSyncQueue = job.catch(() => {});
+    return job;
+  }
   return new Promise((resolve, reject) => {
     chrome.runtime.sendMessage({ type: 'TIME_TRACKER_SYNC_NOW' }, (response) => {
       if (chrome.runtime.lastError) {

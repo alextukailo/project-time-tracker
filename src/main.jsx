@@ -1,3 +1,4 @@
+import './shared/platform/chromeCompat';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 

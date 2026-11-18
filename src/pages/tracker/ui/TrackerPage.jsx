@@ -44,6 +44,7 @@ import {
 } from '@/features/google-sheets';
 
 export function TrackerPage() {
+  const isDesktop = window.desktop?.platform === 'electron';
   const queryClient = useQueryClient();
 
   const [now, setNow] = useState(Date.now());
@@ -361,6 +362,18 @@ export function TrackerPage() {
     triggerSync,
   ]);
 
+  // While the desktop window is open, periodically reconcile remote edits.
+  // The tray/background scheduler will be a separate release step.
+  useEffect(() => {
+    if (!isDesktop || !syncConfig) return undefined;
+    const handle = setInterval(() => {
+      void requestSync().then(refreshData).catch((error) => {
+        setSyncWarning(`Синхронизация будет повторена: ${error.message}`);
+      });
+    }, 60_000);
+    return () => clearInterval(handle);
+  }, [isDesktop, syncConfig, refreshData]);
+
   // ----------------------------------------
   // Loading
   // ----------------------------------------
@@ -398,7 +411,7 @@ export function TrackerPage() {
           <div role="status" className="py-10 text-center text-xs text-slate-500">
             Проверяем подключение Google Таблицы...
           </div>
-        ) : !syncConfig ? (
+        ) : !syncConfig && !isDesktop ? (
           <GoogleSheetsPanel
             config={null}
             entries={entries}
@@ -409,6 +422,15 @@ export function TrackerPage() {
           />
         ) : (
           <>
+        {isDesktop && !syncConfig && (
+          <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-900">
+            <p className="font-bold">Desktop — подключение Google Таблицы</p>
+            <p className="mt-1">
+              Локальные проекты и история доступны без интернета. Ниже можно войти в Google и подключить таблицу для синхронизации с Chrome-расширением.
+            </p>
+          </div>
+        )}
+
         {/* New project */}
 
         <section className="mb-7">

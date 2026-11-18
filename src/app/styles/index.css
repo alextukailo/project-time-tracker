@@ -26,3 +26,9 @@ button:disabled {
 button[aria-busy="true"] {
   cursor: progress;
 }
+
+/* Desktop has its own resizable window, unlike a fixed-width Chrome popup. */
+html[data-desktop="true"] body {
+  width: 100%;
+  min-width: 0;
+}

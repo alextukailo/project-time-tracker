@@ -24,3 +24,16 @@ dist-ssr
 *.sw?
 .env
 .secrets/
+
+
+# Generated builds
+dist/
+dist-desktop/
+dist-electron/
+
+# Electron OAuth credentials
+electron/oauth-config.js
+electron/oauth-client-secret.js
+
+# Local secrets
+.secrets/

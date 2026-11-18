@@ -22,6 +22,19 @@ export function spreadsheetUrl(id) {
 }
 
 export async function sheetsRequest(id, method = 'get', suffix = '', data, params) {
+  if (typeof window !== 'undefined' && window.desktop?.platform === 'electron') {
+    try {
+      return await window.desktop.sheets.request({ id, method, suffix, data, params });
+    } catch (error) {
+      if (error.status === 403) {
+        throw new Error(`Google Sheets отказал в доступе: ${error.message}`, { cause: error });
+      }
+      if (error.status === 404) {
+        throw new Error('Таблица не найдена. Проверьте ссылку и аккаунт Google.', { cause: error });
+      }
+      throw error;
+    }
+  }
   const run = async (token) => axios({
     method,
     url: `${ROOT}/${encodeURIComponent(id)}${suffix}`,
