@@ -1,3 +1,5 @@
+import { useState } from 'react';
+
 import { Spinner } from '@/shared/ui/Spinner';
 import {
   formatDuration,
@@ -32,6 +34,7 @@ export function SessionHistory({
   onDeleteSession,
   isDeleting = false,
 }) {
+  const [confirmSessionId, setConfirmSessionId] = useState(null);
   const grouped = new Map();
 
   for (const entry of entries) {
@@ -68,13 +71,10 @@ export function SessionHistory({
   }
 
   const handleDelete = (sessionId) => {
-    const confirmed = window.confirm(
-      'Вы уверены, что хотите удалить эту сессию?'
-    );
-
-    if (confirmed) {
-      onDeleteSession?.(sessionId);
-    }
+    // Native confirmation dialogs can be unreliable in an extension popup:
+    // the browser may close the popup before the callback completes.
+    onDeleteSession?.(sessionId);
+    setConfirmSessionId(null);
   };
 
   return (
@@ -99,19 +99,40 @@ export function SessionHistory({
                   {formatDuration(session.durationMs)}
                 </span>
 
-                <button
-                  type="button"
-                  disabled={isDeleting}
-                  aria-busy={isDeleting}
-                  onClick={() => handleDelete(session.id)}
-                  className="text-xs text-red-600 hover:text-red-800 disabled:opacity-40"
-                  title="Удалить сессию"
-                >
-                  <span className="inline-flex items-center gap-1">
-                    {isDeleting && <Spinner />}
+                {confirmSessionId === session.id ? (
+                  <div className="flex items-center gap-2" role="group" aria-label="Подтвердить удаление сессии">
+                    <button
+                      type="button"
+                      disabled={isDeleting}
+                      aria-busy={isDeleting}
+                      onClick={() => handleDelete(session.id)}
+                      className="text-xs font-semibold text-red-600 hover:text-red-800 disabled:opacity-40"
+                    >
+                      <span className="inline-flex items-center gap-1">
+                        {isDeleting && <Spinner />}
+                        Да, удалить
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isDeleting}
+                      onClick={() => setConfirmSessionId(null)}
+                      className="text-xs text-slate-600 hover:text-black disabled:opacity-40"
+                    >
+                      Отмена
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={isDeleting}
+                    onClick={() => setConfirmSessionId(session.id)}
+                    className="text-xs text-red-600 hover:text-red-800 disabled:opacity-40"
+                    title="Удалить сессию"
+                  >
                     Удалить
-                  </span>
-                </button>
+                  </button>
+                )}
               </div>
             </div>
 

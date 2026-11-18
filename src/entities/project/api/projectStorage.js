@@ -1,4 +1,3 @@
-/* eslint-disable no-undef */
 
 import {
   getWorkSegments,
@@ -8,6 +7,7 @@ import {
 const PROJECTS_KEY = 'projects';
 const ENTRIES_KEY = 'timeEntries';
 const DELETED_ENTRIES_KEY = 'deletedEntryIds';
+const DELETED_RECORDS_KEY = 'deletedEntryRecords';
 const DELETED_PROJECTS_KEY = 'deletedProjects';
 const DELETED_PROJECTS_HISTORY_KEY = 'deletedProjectsHistory';
 
@@ -86,7 +86,7 @@ export async function renameProject({ projectId, name }) {
 
 export async function deleteProject(projectId) {
   const state = await chrome.storage.local.get([
-    PROJECTS_KEY, ENTRIES_KEY, DELETED_ENTRIES_KEY,
+    PROJECTS_KEY, ENTRIES_KEY, DELETED_ENTRIES_KEY, DELETED_RECORDS_KEY,
     DELETED_PROJECTS_KEY, DELETED_PROJECTS_HISTORY_KEY,
   ]);
 
@@ -101,6 +101,8 @@ export async function deleteProject(projectId) {
   const removed = entries.filter((entry) => entry.projectId === projectId);
   const pendingDeletions = new Set(state[DELETED_ENTRIES_KEY] ?? []);
   removed.forEach((entry) => pendingDeletions.add(entry.id));
+  const recordMap = new Map((state[DELETED_RECORDS_KEY] ?? []).map((entry) => [entry.id, entry]));
+  removed.forEach((entry) => recordMap.set(entry.id, { ...entry }));
 
   const deletedProjects = state[DELETED_PROJECTS_KEY] ?? [];
   const tombstone = {
@@ -114,6 +116,7 @@ export async function deleteProject(projectId) {
     [PROJECTS_KEY]: projects.filter((item) => item.id !== projectId),
     [ENTRIES_KEY]: entries.filter((entry) => entry.projectId !== projectId),
     [DELETED_ENTRIES_KEY]: [...pendingDeletions],
+    [DELETED_RECORDS_KEY]: [...recordMap.values()],
     [DELETED_PROJECTS_KEY]: [
       ...deletedProjects.filter((item) => item.id !== projectId),
       tombstone,

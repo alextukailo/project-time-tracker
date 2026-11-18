@@ -1,8 +1,8 @@
 
-/* eslint-disable no-undef */
 
 import {
   syncTimeEntries,
+  getSyncConfig,
 } from './features/google-sheets/api/googleSheetsApi';
 
 const SYNC_ALARM = 'time-tracker-sync';
@@ -19,7 +19,8 @@ function runSync(source = 'background') {
     return activeSync;
   }
 
-  activeSync = syncTimeEntries()
+  activeSync = getSyncConfig()
+    .then((config) => config ? syncTimeEntries() : { skipped: true })
     .then((result) => {
       console.log(
         `[Time Tracker] Sync completed: ${source}`,
@@ -64,30 +65,21 @@ async function ensureSyncAlarm() {
 // ----------------------------------------
 
 async function updateBadge() {
-  const { projects = [] } =
-    await chrome.storage.local.get('projects');
-
-  const running = projects.some(
-    (project) => project.status === 'running'
-  );
-
-  const paused = projects.some(
-    (project) => project.status === 'paused'
-  );
-
-  const text = running
-    ? 'ON'
-    : paused
-      ? 'II'
-      : '';
-
-  await chrome.action.setBadgeText({ text });
-
-  if (text) {
-    await chrome.action.setBadgeBackgroundColor({
-      color: running ? '#F1BC00' : '#777777',
-    });
-  }
+  const { projects = [] } = await chrome.storage.local.get('projects');
+  const running = projects.some((project) => project.status === 'running');
+  const paused = projects.some((project) => project.status === 'paused');
+  const state = running ? 'active' : paused ? 'paused' : 'idle';
+  await Promise.all([
+    chrome.action.setIcon({ path: {
+      16: `icons/${state}-16.png`,
+      32: `icons/${state}-32.png`,
+    } }),
+    chrome.action.setBadgeText({ text: running ? 'ON' : paused ? 'II' : '' }),
+    chrome.action.setBadgeBackgroundColor({ color: '#F1BC00' }),
+    chrome.action.setTitle({
+      title: running ? 'Трекер времени — В работе' : paused ? 'Трекер времени — На паузе' : 'Трекер времени',
+    }),
+  ]);
 }
 
 // ----------------------------------------

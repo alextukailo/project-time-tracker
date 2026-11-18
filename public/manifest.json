@@ -5,11 +5,11 @@
   "description": "Учёт времени по проектам с Google Таблицами",
   "permissions": [
     "storage",
-    "alarms"
+    "alarms",
+    "identity"
   ],
   "host_permissions": [
-    "https://script.google.com/*",
-    "https://script.googleusercontent.com/*"
+    "https://sheets.googleapis.com/*"
   ],
   "background": {
     "service_worker": "background.js",
@@ -28,5 +28,11 @@
       "16": "icons/idle-16.png",
       "32": "icons/idle-32.png"
     }
+  },
+  "oauth2": {
+    "client_id": "174396585638-cdvc5etn1ffjjshbsgqtu8oe5dfhd4h0.apps.googleusercontent.com",
+    "scopes": [
+      "https://www.googleapis.com/auth/spreadsheets"
+    ]
   }
 }

@@ -1,10 +1,6 @@
+export { GoogleSheetsPanel } from './ui/GoogleSheetsPanel';
 export {
-  GoogleSheetsPanel,
-} from './ui/GoogleSheetsPanel';
-
-export {
-  getSyncConfig,
-  saveSyncConfig,
-  syncTimeEntries,
-  requestSync,
+  getSyncConfig, saveSyncConfig, connectSpreadsheet,
+  disconnectSpreadsheet, signInWithGoogle,
+  syncTimeEntries, requestSync,
 } from './api/googleSheetsApi';

@@ -1,9 +1,9 @@
 
-/* eslint-disable no-undef */
 
 const PROJECTS_KEY = 'projects';
 const ENTRIES_KEY = 'timeEntries';
 const DELETED_KEY = 'deletedEntryIds';
+const DELETED_RECORDS_KEY = 'deletedEntryRecords';
 
 // ----------------------------------------
 // Get all completed time entries
@@ -30,16 +30,18 @@ export async function deleteTimeSession(sessionId) {
     PROJECTS_KEY,
     ENTRIES_KEY,
     DELETED_KEY,
+    DELETED_RECORDS_KEY,
   ]);
 
   const projects = state[PROJECTS_KEY] ?? [];
   const entries = state[ENTRIES_KEY] ?? [];
   const deletedIds = state[DELETED_KEY] ?? [];
+  const deletedRecords = state[DELETED_RECORDS_KEY] ?? [];
 
   // A session may have multiple entries when
   // it crosses midnight.
   const sessionEntries = entries.filter(
-    (entry) => entry.sessionId === sessionId
+    (entry) => (entry.sessionId ?? entry.id) === sessionId
   );
 
   if (sessionEntries.length === 0) {
@@ -66,12 +68,17 @@ export async function deleteTimeSession(sessionId) {
     ]),
   ];
 
+  // Keep the original values until Sheets confirms the row was really removed.
+  // They allow safe recovery when Google Sheets lost a row's developer metadata.
+  const recordsById = new Map(deletedRecords.map((entry) => [entry.id, entry]));
+  for (const entry of sessionEntries) recordsById.set(entry.id, { ...entry });
+
   // ----------------------------------------
   // 2. Remove entries from local history
   // ----------------------------------------
 
   const remainingEntries = entries.filter(
-    (entry) => entry.sessionId !== sessionId
+    (entry) => (entry.sessionId ?? entry.id) !== sessionId
   );
 
   // ----------------------------------------
@@ -118,6 +125,7 @@ export async function deleteTimeSession(sessionId) {
     [PROJECTS_KEY]: updatedProjects,
     [ENTRIES_KEY]: remainingEntries,
     [DELETED_KEY]: pendingDeletions,
+    [DELETED_RECORDS_KEY]: [...recordsById.values()],
   });
 
   return {

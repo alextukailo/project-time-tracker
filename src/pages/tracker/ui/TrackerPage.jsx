@@ -1,6 +1,5 @@
 /* eslint-disable react-hooks/purity */
 
-/* eslint-disable no-undef */
 
 import {
   useCallback,
@@ -83,9 +82,10 @@ export function TrackerPage() {
 
   const {
     data: syncConfig = null,
+    isPending: isConfigPending,
     error: configError,
   } = useQuery({
-    queryKey: ['appsScriptConfig'],
+    queryKey: ['googleSheetsConfig'],
     queryFn: getSyncConfig,
     retry: false,
     staleTime: Infinity,
@@ -280,6 +280,9 @@ export function TrackerPage() {
   const hasRunningTimer = projects.some(
     (project) => project.status === 'running'
   );
+  const hasActiveTimer = projects.some(
+    (project) => project.status !== 'idle'
+  );
 
   useEffect(() => {
     if (!hasRunningTimer) {
@@ -313,6 +316,10 @@ export function TrackerPage() {
         void queryClient.invalidateQueries({
           queryKey: ['projects'],
         });
+      }
+
+      if (changes.selectedSpreadsheetId) {
+        void queryClient.invalidateQueries({ queryKey: ['googleSheetsConfig'] });
       }
 
       if (changes.timeEntries) {
@@ -387,6 +394,21 @@ export function TrackerPage() {
           </div>
         </header>
 
+        {isConfigPending ? (
+          <div role="status" className="py-10 text-center text-xs text-slate-500">
+            Проверяем подключение Google Таблицы...
+          </div>
+        ) : !syncConfig ? (
+          <GoogleSheetsPanel
+            config={null}
+            entries={entries}
+            syncMutation={syncMutation}
+            onboarding
+            hasLocalData={projects.length > 0 || entries.length > 0}
+            hasActiveTimer={hasActiveTimer}
+          />
+        ) : (
+          <>
         {/* New project */}
 
         <section className="mb-7">
@@ -503,16 +525,9 @@ export function TrackerPage() {
           config={syncConfig}
           entries={entries}
           syncMutation={syncMutation}
+          hasLocalData={projects.length > 0 || entries.length > 0}
+          hasActiveTimer={hasActiveTimer}
         />
-
-        {configError && (
-          <p
-            role="alert"
-            className="mt-3 text-xs text-red-600"
-          >
-            {configError.message}
-          </p>
-        )}
 
         {/* Offline / sync warning */}
 
@@ -525,6 +540,18 @@ export function TrackerPage() {
               {syncWarning}
             </p>
           </div>
+        )}
+
+          </>
+        )}
+
+        {configError && (
+          <p
+            role="alert"
+            className="mt-3 text-xs text-red-600"
+          >
+            {configError.message}
+          </p>
         )}
 
         {/* Footer */}

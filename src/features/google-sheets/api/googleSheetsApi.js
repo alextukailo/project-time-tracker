@@ -1,67 +1,103 @@
-/* eslint-disable no-undef */
 
-import axios from 'axios';
-
-const WEB_APP_URL = import.meta.env.VITE_WEB_APP_URL;
-const SYNC_SECRET = import.meta.env.VITE_SYNC_SECRET;
+import { syncSheetData } from './directSheetsSync';
+import { extractSpreadsheetId, spreadsheetUrl, verifySpreadsheetAccess } from './sheetsClient';
+import { getGoogleAccessToken, signInWithGoogle, signOutFromGoogle } from './oauth';
 
 const PROJECTS_KEY = 'projects';
 const ENTRIES_KEY = 'timeEntries';
 const DELETED_ENTRIES_KEY = 'deletedEntryIds';
+const DELETED_RECORDS_KEY = 'deletedEntryRecords';
 const DELETED_PROJECTS_KEY = 'deletedProjects';
 const DELETED_PROJECTS_HISTORY_KEY = 'deletedProjectsHistory';
 const MIGRATED_KEY = 'dateTabsMigrationV3';
-
-function validateConfig() {
-  if (!WEB_APP_URL?.endsWith('/exec')) {
-    throw new Error('Проверьте VITE_WEB_APP_URL в .env');
-  }
-  if (!SYNC_SECRET?.trim()) {
-    throw new Error('Проверьте VITE_SYNC_SECRET в .env');
-  }
-}
+const SELECTED_ID_KEY = 'selectedSpreadsheetId';
+const PROFILES_KEY = 'oauthSpreadsheetProfiles';
+const SELECTED_TITLE_KEY = 'selectedSpreadsheetTitle';
+const STATE_KEYS = [PROJECTS_KEY, ENTRIES_KEY, DELETED_ENTRIES_KEY, DELETED_RECORDS_KEY,
+  DELETED_PROJECTS_KEY, DELETED_PROJECTS_HISTORY_KEY, MIGRATED_KEY];
 
 export async function getSyncConfig() {
-  validateConfig();
-  return { configured: true, webAppUrl: WEB_APP_URL };
+  const state = await chrome.storage.local.get([SELECTED_ID_KEY, SELECTED_TITLE_KEY]);
+  const id = state[SELECTED_ID_KEY];
+  return id ? {
+    configured: true, spreadsheetId: id, spreadsheetTitle: state[SELECTED_TITLE_KEY] || 'Google Таблица',
+    spreadsheetUrl: spreadsheetUrl(id),
+  } : null;
 }
 
-// Kept only for compatibility with existing module imports.
-export async function saveSyncConfig() {
+async function saveCurrentProfile(nextId, nextTitle, importLocal) {
+  const state = await chrome.storage.local.get([...STATE_KEYS, SELECTED_ID_KEY,
+    SELECTED_TITLE_KEY, PROFILES_KEY]);
+  const previousId = state[SELECTED_ID_KEY] || 'legacy';
+  const profiles = state[PROFILES_KEY] || {};
+  // All state, including tombstones, is kept separately for each spreadsheet.
+  profiles[previousId] = Object.fromEntries(STATE_KEYS.map((key) => [key, state[key]]));
+  const restored = profiles[nextId];
+  const empty = {
+    [PROJECTS_KEY]: [], [ENTRIES_KEY]: [], [DELETED_ENTRIES_KEY]: [], [DELETED_RECORDS_KEY]: [],
+    [DELETED_PROJECTS_KEY]: [], [DELETED_PROJECTS_HISTORY_KEY]: [], [MIGRATED_KEY]: false,
+  };
+  const nextState = restored ? { ...empty, ...restored } : importLocal ? {
+    ...empty,
+    [PROJECTS_KEY]: (state[PROJECTS_KEY] || []).map((p) => ({ ...p, syncStatus: 'pending', remoteProjectId: null })),
+    [ENTRIES_KEY]: (state[ENTRIES_KEY] || []).map((e) => ({ ...e, syncStatus: 'pending' })),
+  } : empty;
+  await chrome.storage.local.set({
+    ...nextState,
+    [SELECTED_ID_KEY]: nextId,
+    [SELECTED_TITLE_KEY]: nextTitle,
+    [PROFILES_KEY]: profiles,
+  });
+}
+
+export async function connectSpreadsheet(url, { importLocal = false } = {}) {
+  const id = extractSpreadsheetId(url);
+  // A token must already have been granted by the explicit Sign In button.
+  await getGoogleAccessToken(false);
+  const sheet = await verifySpreadsheetAccess(id);
+  const state = await chrome.storage.local.get([SELECTED_ID_KEY, PROJECTS_KEY]);
+  if (state[SELECTED_ID_KEY] === id) {
+    await chrome.storage.local.set({ [SELECTED_TITLE_KEY]: sheet.title });
+    return getSyncConfig();
+  }
+  if ((state[PROJECTS_KEY] || []).some((p) => p.status !== 'idle')) {
+    throw new Error('Остановите или завершите активную сессию перед сменой таблицы.');
+  }
+  await saveCurrentProfile(id, sheet.title, importLocal);
   return getSyncConfig();
 }
 
-async function postToScript(payload) {
-  validateConfig();
-  const response = await axios.post(
-    WEB_APP_URL,
-    JSON.stringify({ ...payload, secret: SYNC_SECRET.trim() }),
-    {
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      responseType: 'text',
-      timeout: 30000,
-    }
-  );
-
-  let result;
-  try {
-    result = typeof response.data === 'string'
-      ? JSON.parse(response.data)
-      : response.data;
-  } catch {
-    throw new Error('Неверный ответ Apps Script. Проверьте URL и доступ.');
+export async function disconnectSpreadsheet() {
+  const state = await chrome.storage.local.get([...STATE_KEYS, SELECTED_ID_KEY, PROFILES_KEY]);
+  if ((state[PROJECTS_KEY] || []).some((project) => project.status !== 'idle')) {
+    throw new Error('Остановите или завершите активную сессию перед отключением таблицы.');
   }
-
-  if (!result?.ok) throw new Error(result?.error || 'Ошибка синхронизации');
-  if (
-    result.version !== '4.0.0' ||
-    !Array.isArray(result.projects) ||
-    !Array.isArray(result.entries) ||
-    !Array.isArray(result.deletedProjectIds)
-  ) {
-    throw new Error('Обновите Apps Script до версии 4.0.0 и опубликуйте новый deployment');
+  const profiles = state[PROFILES_KEY] || {};
+  if (state[SELECTED_ID_KEY]) {
+    // Preserve the disconnected spreadsheet's local changes for a later reconnect.
+    profiles[state[SELECTED_ID_KEY]] = Object.fromEntries(
+      STATE_KEYS.map((key) => [key, state[key]])
+    );
   }
-  return result;
+  const emptyState = {
+    [PROJECTS_KEY]: [], [ENTRIES_KEY]: [], [DELETED_ENTRIES_KEY]: [], [DELETED_RECORDS_KEY]: [],
+    [DELETED_PROJECTS_KEY]: [], [DELETED_PROJECTS_HISTORY_KEY]: [], [MIGRATED_KEY]: false,
+  };
+  await chrome.storage.local.set({
+    ...emptyState,
+    ...(profiles.legacy || {}),
+    [PROFILES_KEY]: profiles,
+    [SELECTED_ID_KEY]: null,
+    [SELECTED_TITLE_KEY]: null,
+  });
+  await signOutFromGoogle();
+}
+
+export { signInWithGoogle };
+
+// Retained for backward-compatible imports. No server-side shared secret.
+export async function saveSyncConfig() {
+  return getSyncConfig();
 }
 
 const normalize = (value) => String(value ?? '').trim().toLocaleLowerCase('ru');
@@ -75,11 +111,13 @@ function pickLocalProject(candidates, remoteId) {
 }
 
 export async function syncTimeEntries() {
-  validateConfig();
+  const config = await getSyncConfig();
+  if (!config) throw new Error('Подключите Google Таблицу');
   const state = await chrome.storage.local.get([
     PROJECTS_KEY,
     ENTRIES_KEY,
     DELETED_ENTRIES_KEY,
+    DELETED_RECORDS_KEY,
     DELETED_PROJECTS_KEY,
     DELETED_PROJECTS_HISTORY_KEY,
     MIGRATED_KEY,
@@ -87,6 +125,7 @@ export async function syncTimeEntries() {
   const localProjects = state[PROJECTS_KEY] ?? [];
   const localEntries = state[ENTRIES_KEY] ?? [];
   const deletedEntryIds = state[DELETED_ENTRIES_KEY] ?? [];
+  const deletedEntryRecords = state[DELETED_RECORDS_KEY] ?? [];
   const deletedProjects = state[DELETED_PROJECTS_KEY] ?? [];
 
   // On first migration send all existing entries; afterwards send pending only.
@@ -94,7 +133,7 @@ export async function syncTimeEntries() {
     ? localEntries.filter((entry) => entry.syncStatus !== 'synced')
     : localEntries;
 
-  const result = await postToScript({
+  const result = await syncSheetData(config.spreadsheetId, {
     action: 'sync',
     protocolVersion: 4,
     projects: localProjects.map((item) => ({
@@ -108,6 +147,7 @@ export async function syncTimeEntries() {
     })),
     entries: toSend,
     deletedEntryIds,
+    deletedEntryRecords: deletedEntryRecords.filter((entry) => deletedEntryIds.includes(entry.id)),
     deletedProjects,
   });
 
@@ -116,16 +156,24 @@ export async function syncTimeEntries() {
     PROJECTS_KEY,
     ENTRIES_KEY,
     DELETED_ENTRIES_KEY,
+    DELETED_RECORDS_KEY,
     DELETED_PROJECTS_KEY,
     DELETED_PROJECTS_HISTORY_KEY,
   ]);
   const currentProjects = latest[PROJECTS_KEY] ?? [];
   const currentEntries = latest[ENTRIES_KEY] ?? [];
-  const ackDeletedEntries = new Set(deletedEntryIds);
+  // Only acknowledge IDs that the Sheets API verified absent. In particular,
+  // never clear the queue just because the ID was included in our request.
+  const returnedEntryIds = new Set(result.entries.map((entry) => entry.id));
+  const ackDeletedEntries = new Set(
+    (result.deletedIds ?? []).filter((id) => !returnedEntryIds.has(id))
+  );
   const ackDeletedProjects = new Set(result.deletedProjectIds);
   const newDeletedEntries = (latest[DELETED_ENTRIES_KEY] ?? [])
     .filter((id) => !ackDeletedEntries.has(id));
   const excludedEntries = new Set(newDeletedEntries);
+  const pendingDeletedRecords = (latest[DELETED_RECORDS_KEY] ?? [])
+    .filter((entry) => excludedEntries.has(entry.id));
 
   const pendingTombstones = latest[DELETED_PROJECTS_KEY] ?? [];
   const deletionHistory = latest[DELETED_PROJECTS_HISTORY_KEY] ?? [];
@@ -276,14 +324,24 @@ export async function syncTimeEntries() {
     totalMs: totals.get(project.id) ?? 0,
   }));
 
+  const selected = (await chrome.storage.local.get(SELECTED_ID_KEY))[SELECTED_ID_KEY];
+  if (selected !== config.spreadsheetId) {
+    throw new Error('Таблица была изменена во время синхронизации.');
+  }
   await chrome.storage.local.set({
     [PROJECTS_KEY]: projectsToSave,
     [ENTRIES_KEY]: mergedEntries,
     [DELETED_ENTRIES_KEY]: newDeletedEntries,
+    [DELETED_RECORDS_KEY]: pendingDeletedRecords,
     [DELETED_PROJECTS_KEY]: newDeletedProjects,
     [DELETED_PROJECTS_HISTORY_KEY]: deletionHistory,
     [MIGRATED_KEY]: true,
   });
+
+  if (newDeletedEntries.some((id) => deletedEntryIds.includes(id))) {
+    throw new Error('Удаление сессии не подтверждено Google Sheets. ' +
+      'Изменение сохранено локально, повторная синхронизация будет выполнена автоматически.');
+  }
 
   if (unresolvedDeletes.length > 0) {
     throw new Error('Google Sheets снова вернул удалённый проект. ' +

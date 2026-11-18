@@ -75,7 +75,7 @@ test('session deletion queues all split daily entries', async () => {
 });
 
 test('Google Sheets decimal hour conversion', async () => {
-  const script = await fs.readFile(new URL('../google-apps-script/Code.gs', import.meta.url), 'utf8');
+  const script = await fs.readFile(new URL('../legacy/google-apps-script/Code.gs', import.meta.url), 'utf8');
   const context = vm.createContext({ console });
   vm.runInContext(script, context);
   vm.runInContext('testHours()', context);

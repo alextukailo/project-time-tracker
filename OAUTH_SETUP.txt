@@ -1,0 +1,15 @@
+TIME TRACKER — БЫСТРАЯ НАСТРОЙКА GOOGLE OAUTH
+
+1. Chrome → chrome://extensions → Developer mode → ID текущего расширения.
+2. Google Cloud Console → Google Auth Platform → Branding/Audience (External + Test users).
+3. APIs & Services → Library → Google Sheets API → Enable.
+4. Google Auth Platform → Clients → Create client → Chrome Extension.
+5. Item ID: точный 32-символьный ID Chrome-расширения.
+6. Скопируйте OAuth Client ID в public/manifest.json → oauth2.client_id.
+7. npm ci && npm run lint && npm run build
+8. chrome://extensions → Reload старого расширения (не удалить!).
+9. Popup → Войти через Google → вставить ссылку на Таблицу → Подключить.
+
+НЕ ТРЕБУЕТСЯ Apps Script, .env, VITE_SYNC_SECRET, client secret.
+В Testing добавьте тестового пользователя; для публичного выпуска scope spreadsheets требует Google OAuth verification.
+Примечание: храните резервную копию данных и таблицы до первой синхронизации.
